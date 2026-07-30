@@ -208,3 +208,10 @@ __marimo__/
 
 # other
 config.ini
+
+# Local Chrome session used to persist login state
+chrome_session/
+
+# Debug screenshots generated during script execution
+debug.png
+邮箱.png

@@ -5,6 +5,8 @@ email = your_email@example.com
 password = your_password
 # TOTP 密钥，没有的不需要填（可从 Authenticator 应用导出或 Akile 绑定 2FA 时保存的密钥）
 totp =
+# 本地 Chrome session 保存目录，用于避免每次重复登录，默认为 chrome_session
+session_dir = chrome_session
 # Server酱的push_key(可选, 不填的话不会通知)
 # 获取地址: https://sct.ftqq.com/
 push_key =

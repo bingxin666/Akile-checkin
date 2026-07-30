@@ -24,6 +24,7 @@ class AkileCheckin:
         self.password = os.getenv("AKILE_PASSWORD", "").strip()
         self.totp = os.getenv("AKILE_TOTP", "").strip()
         self.push_key = os.getenv("AKILE_PUSH_KEY", "").strip()
+        self.session_dir = os.getenv("AKILE_SESSION_DIR", "").strip()
 
         # 若环境变量未配置则回退到配置文件
         if not self.email or not self.password:
@@ -35,6 +36,13 @@ class AkileCheckin:
             self.push_key = self.push_key or config.get(
                 "akile", "push_key", fallback=""
             )
+            self.session_dir = self.session_dir or config.get(
+                "akile", "session_dir", fallback=""
+            )
+
+        # 默认使用本地 chrome_session 目录保存登录状态
+        if not self.session_dir:
+            self.session_dir = os.path.abspath("chrome_session")
 
         options = uc.ChromeOptions()
         options.add_argument("--lang=zh-CN")
@@ -43,6 +51,7 @@ class AkileCheckin:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
+        options.add_argument(f"--user-data-dir={self.session_dir}")
         options.add_argument(
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
@@ -53,6 +62,8 @@ class AkileCheckin:
         if chrome_path:
             options.binary_location = chrome_path
             print(f"Using Chrome binary: {chrome_path} (major={chrome_major})")
+
+        print(f"Using session directory: {self.session_dir}")
 
         if chrome_major:
             self.browser = uc.Chrome(options=options, version_main=chrome_major)
@@ -164,8 +175,36 @@ class AkileCheckin:
 
         return True
 
+    def _is_logged_in(self):
+        """通过访问控制台页面判断当前是否已登录"""
+        self.browser.get("https://akile.ai/console/ak-coin-shop")
+        time.sleep(3)
+        current_url = self.browser.current_url
+        print(f"检测登录状态，当前 URL: {current_url}")
+        # 若被重定向到登录页，则未登录
+        if "/login" in current_url:
+            return False
+        # 页面中存在 AK 币余额元素说明已登录
+        try:
+            self.browser.find_element(By.CSS_SELECTOR, ".coin-balance-value")
+            return True
+        except Exception:
+            pass
+        # 兜底：若页面中不存在邮箱/密码输入框，也视为已登录
+        try:
+            self.browser.find_element(By.CSS_SELECTOR, 'input[placeholder*="邮箱"]')
+            return False
+        except Exception:
+            return True
+
     def login(self):
-        # 直接访问登录页面
+        # 先尝试直接访问控制台页面，若已登录则跳过登录流程
+        if self._is_logged_in():
+            print("检测到已有登录 session，跳过登录")
+            return
+
+        # 需要重新登录
+        print("未检测到登录 session，执行登录...")
         self.browser.get("https://akile.ai/login")
         self.browser.maximize_window()
         time.sleep(2)
@@ -207,6 +246,9 @@ class AkileCheckin:
         # 处理二次验证（TOTP）
         self._fill_totp()
 
+        # 等待登录完成，确保 session 已写入
+        time.sleep(3)
+
     def _get_ak_coins(self):
         """获取当前AK币数量"""
         try:
@@ -218,9 +260,10 @@ class AkileCheckin:
 
     # 签到主逻辑
     def check_in(self):
-        checkin_page = "https://akile.ai/console/ak-coin-shop"
-        self.browser.get(checkin_page)
-        time.sleep(5)  # 增加等待时间
+        # 确保当前在签到页面
+        if "/console/ak-coin-shop" not in self.browser.current_url:
+            self.browser.get("https://akile.ai/console/ak-coin-shop")
+            time.sleep(5)
 
         # 关闭可能出现的弹窗
         self._dismiss_dialogs()
@@ -283,7 +326,6 @@ if __name__ == "__main__":
     akile = AkileCheckin()
     try:
         akile.login()
-        time.sleep(3)  # 防止执行太快导致需要二次登录
         akile.check_in()
     finally:
         if akile.browser:
