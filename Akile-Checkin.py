@@ -3,6 +3,8 @@ import os
 import re
 import shutil
 import subprocess
+import datetime
+import random
 import sys
 import time
 
@@ -228,7 +230,7 @@ class AkileCheckin:
             print(f"邮箱或密码输入框没有加载出来: {e}")
             msg = f"邮箱或密码输入框没有加载出来: {e}\n签到失败"
             Notice.serverJ(self.push_key, "Akile签到", msg)
-            sys.exit(1)
+            return False
 
         try:
             submit_button = WebDriverWait(self.browser, 10).until(
@@ -241,13 +243,14 @@ class AkileCheckin:
             print(f"登录按钮没有加载出来: {e}")
             msg = f"登录按钮没有加载出来: {e}\n签到失败"
             Notice.serverJ(self.push_key, "Akile签到", msg)
-            sys.exit(1)
+            return False
 
         # 处理二次验证（TOTP）
         self._fill_totp()
 
         # 等待登录完成，确保 session 已写入
         time.sleep(3)
+        return True
 
     def _get_ak_coins(self):
         """获取当前AK币数量"""
@@ -295,7 +298,7 @@ class AkileCheckin:
 
             print(msg)
             Notice.serverJ(self.push_key, "Akile签到", msg)
-            sys.exit(0)
+            return True
 
         except TimeoutException:
             print("未找到签到按钮，检查是否已签到...")
@@ -307,7 +310,7 @@ class AkileCheckin:
                 msg = f"今日已签到, 现在有{prev_points_num}AK币"
                 print(msg)
                 Notice.serverJ(self.push_key, "Akile签到", msg)
-                sys.exit(0)
+                return True
             except Exception as e:
                 print(f"查找已签到按钮失败: {e}")
                 # 保存截图用于调试
@@ -315,18 +318,71 @@ class AkileCheckin:
                 msg = "签到按钮和已签到按钮都无法加载出来, 可能是网络原因, 可以等待一会再执行脚本"
                 print(msg)
                 Notice.serverJ(self.push_key, "Akile签到", msg)
-                sys.exit(1)
+                return False
 
     def __del__(self):
         if self.browser:
             self.browser.quit()
 
 
-if __name__ == "__main__":
+def _get_next_checkin_datetime(checkin_time_str, random_delay_minutes):
+    """计算下一次签到时间，并在目标时间基础上增加随机延迟"""
+    hour, minute = map(int, checkin_time_str.split(":"))
+    now = datetime.datetime.now()
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += datetime.timedelta(days=1)
+
+    if random_delay_minutes:
+        delay_seconds = random.randint(-random_delay_minutes, random_delay_minutes) * 60
+        target += datetime.timedelta(seconds=delay_seconds)
+
+    if target <= now:
+        target = now + datetime.timedelta(seconds=1)
+
+    return target
+
+
+def _run_checkin_once():
+    """执行一次签到流程"""
     akile = AkileCheckin()
     try:
-        akile.login()
-        akile.check_in()
+        if not akile.login():
+            return False
+        return akile.check_in()
     finally:
         if akile.browser:
             akile.browser.quit()
+
+
+if __name__ == "__main__":
+    scheduled = os.getenv("RUN_SCHEDULED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if not scheduled:
+        success = _run_checkin_once()
+        sys.exit(0 if success else 1)
+
+    checkin_time = os.getenv("AKILE_CHECKIN_TIME", "10:00").strip()
+    random_delay_minutes = int(
+        os.getenv("AKILE_RANDOM_DELAY_MINUTES", "5").strip()
+    )
+
+    print(
+        f"已进入定时签到模式，每日 {checkin_time} 左右"
+        f"（±{random_delay_minutes} 分钟）尝试签到"
+    )
+
+    while True:
+        next_checkin = _get_next_checkin_datetime(checkin_time, random_delay_minutes)
+        sleep_seconds = (next_checkin - datetime.datetime.now()).total_seconds()
+        print(
+            f"下次签到时间: {next_checkin.strftime('%Y-%m-%d %H:%M:%S')}，"
+            f"等待 {int(sleep_seconds)} 秒"
+        )
+        time.sleep(max(sleep_seconds, 1))
+
+        _run_checkin_once()
