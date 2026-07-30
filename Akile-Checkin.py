@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 
+import pyotp
 import undetected_chromedriver as uc
 from notice import Notice
 from selenium.common.exceptions import TimeoutException
@@ -21,6 +22,7 @@ class AkileCheckin:
         # 优先读取环境变量（便于在 GitHub Actions 中直接运行）
         self.email = os.getenv("AKILE_EMAIL", "").strip()
         self.password = os.getenv("AKILE_PASSWORD", "").strip()
+        self.totp = os.getenv("AKILE_TOTP", "").strip()
         self.push_key = os.getenv("AKILE_PUSH_KEY", "").strip()
 
         # 若环境变量未配置则回退到配置文件
@@ -29,6 +31,7 @@ class AkileCheckin:
             config.read("config.ini", encoding="utf-8")
             self.email = self.email or config.get("akile", "email")
             self.password = self.password or config.get("akile", "password")
+            self.totp = self.totp or config.get("akile", "totp", fallback="")
             self.push_key = self.push_key or config.get(
                 "akile", "push_key", fallback=""
             )
@@ -83,34 +86,89 @@ class AkileCheckin:
         return None, None
 
     def _dismiss_dialogs(self):
-        """关闭所有可能的弹窗和遮挡层"""
-        # 尝试点击关闭按钮
+        """关闭所有可能的弹窗和遮挡层，但保留 TOTP 验证弹窗"""
+        # 尝试点击关闭按钮（排除 TOTP 验证弹窗内的关闭按钮）
         try:
-            close_btn = self.browser.find_element(
+            close_btns = self.browser.find_elements(
                 By.CSS_SELECTOR,
                 '.arco-modal-close-btn, .arco-modal-close, [class*="close"]',
             )
-            self.browser.execute_script("arguments[0].click();", close_btn)
-            time.sleep(0.5)
+            for close_btn in close_btns:
+                try:
+                    modal = close_btn.find_element(By.XPATH, "ancestor::*[contains(@class, 'arco-modal')]")
+                    if "验证器" in modal.text or "验证码" in modal.text:
+                        continue
+                except Exception:
+                    pass
+                self.browser.execute_script("arguments[0].click();", close_btn)
+                time.sleep(0.5)
+                break
         except Exception:
             pass
 
-        # 强制移除所有可能的遮挡层
+        # 强制移除所有可能的遮挡层，但保留 TOTP 验证弹窗
         self.browser.execute_script("""
             document.querySelectorAll(
                 '.arco-modal-wrapper, .arco-modal-mask, .arco-modal, .arco-modal-container'
-            ).forEach(m => m.remove());
+            ).forEach(m => {
+                if (m.innerText && (m.innerText.includes('验证器') || m.innerText.includes('验证码'))) {
+                    return;
+                }
+                m.remove();
+            });
             document.body.style.overflow = '';
         """)
+
+    def _fill_totp(self):
+        """如果页面要求 TOTP 验证码，则自动生成并填入"""
+        if not self.totp:
+            return False
+
+        # 等待 TOTP 验证码输入框出现
+        try:
+            WebDriverWait(self.browser, 8).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'input[name="ak-code-0"]')
+                )
+            )
+        except TimeoutException:
+            # 未出现 TOTP 输入框，视为无需验证
+            return False
+
+        totp = pyotp.TOTP(self.totp)
+        code = totp.now()
+        print(f"检测到 TOTP 验证，正在填入验证码: {code}")
+
+        for i, digit in enumerate(code):
+            try:
+                digit_input = self.browser.find_element(
+                    By.NAME, f"ak-code-{i}"
+                )
+                digit_input.clear()
+                digit_input.send_keys(digit)
+            except Exception as e:
+                print(f"填入 TOTP 第 {i + 1} 位失败: {e}")
+                return False
+
+        # 等待“继续”按钮可用并点击
+        try:
+            continue_button = WebDriverWait(self.browser, 10).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, '//div[contains(@class, "verification-code")]//button[contains(., "继续")]')
+                )
+            )
+            continue_button.click()
+        except TimeoutException as e:
+            print(f"TOTP 继续按钮未启用或不可点击: {e}")
+            return False
+
+        return True
 
     def login(self):
         # 直接访问登录页面
         self.browser.get("https://akile.ai/login")
         self.browser.maximize_window()
         time.sleep(2)
-
-        # 关闭可能出现的弹窗
-        self._dismiss_dialogs()
 
         # 键入邮箱和密码
         try:
@@ -145,6 +203,9 @@ class AkileCheckin:
             msg = f"登录按钮没有加载出来: {e}\n签到失败"
             Notice.serverJ(self.push_key, "Akile签到", msg)
             sys.exit(1)
+
+        # 处理二次验证（TOTP）
+        self._fill_totp()
 
     def _get_ak_coins(self):
         """获取当前AK币数量"""
