@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# GitHub Actions
+.github
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Documentation
+README.md
+LICENSE
+*.png
+
+# User-specific files (credentials / session)
+config.ini
+config.ini.example
+chrome_session
