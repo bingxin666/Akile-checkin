@@ -34,6 +34,14 @@ docker run -d --name akile-checkin \
 
 容器启动后会进入定时模式，每日在设定时间前后随机延迟执行一次签到。签到完成后容器会继续运行，等待下一次签到时间。
 
+也可以使用 Docker Compose 部署，项目提供了示例文件 `docker-compose.yml.example`：
+
+```bash
+cp docker-compose.yml.example docker-compose.yml
+# 按需编辑环境变量后启动
+docker compose up -d
+```
+
 如需手动运行一次或覆盖默认签到时间，可设置环境变量：
 
 ```bash
@@ -159,6 +167,7 @@ Akile-checkin/
 ├── Akile-Checkin.py      # 主程序
 ├── notice.py             # 消息推送模块
 ├── config.ini.example    # 配置文件示例
+├── docker-compose.yml.example  # Docker Compose 示例
 ├── requirements.txt      # Python 依赖
 ├── Dockerfile            # Docker 镜像
 ├── .dockerignore         # Docker 构建忽略文件
