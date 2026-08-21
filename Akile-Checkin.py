@@ -183,8 +183,8 @@ class AkileCheckin:
         time.sleep(3)
         current_url = self.browser.current_url
         print(f"检测登录状态，当前 URL: {current_url}")
-        # 若被重定向到登录页，则未登录
-        if "/login" in current_url:
+        # 新版页面未登录访问控制台会被重定向到首页或登录页
+        if "/console" not in current_url:
             return False
         # 页面中存在 AK 币余额元素说明已登录
         try:
@@ -192,9 +192,9 @@ class AkileCheckin:
             return True
         except Exception:
             pass
-        # 兜底：若页面中不存在邮箱/密码输入框，也视为已登录
+        # 兜底：若页面中存在邮箱输入框，说明停留在登录页
         try:
-            self.browser.find_element(By.CSS_SELECTOR, 'input[placeholder*="邮箱"]')
+            self.browser.find_element(By.CSS_SELECTOR, 'input[name="email"]')
             return False
         except Exception:
             return True
@@ -203,7 +203,7 @@ class AkileCheckin:
         # 先尝试直接访问控制台页面，若已登录则跳过登录流程
         if self._is_logged_in():
             print("检测到已有登录 session，跳过登录")
-            return
+            return True
 
         # 需要重新登录
         print("未检测到登录 session，执行登录...")
@@ -215,13 +215,19 @@ class AkileCheckin:
         try:
             email_input = WebDriverWait(self.browser, 10).until(
                 EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, 'input[placeholder*="邮箱"]')
+                    (
+                        By.CSS_SELECTOR,
+                        'input[name="email"], input[placeholder*="邮箱"]',
+                    )
                 )
             )
             email_input.send_keys(self.email)
             password_input = WebDriverWait(self.browser, 10).until(
                 EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, 'input[placeholder*="密码"]')
+                    (
+                        By.CSS_SELECTOR,
+                        'input[name="password"], input[placeholder*="密码"]',
+                    )
                 )
             )
             password_input.send_keys(self.password)
@@ -250,6 +256,12 @@ class AkileCheckin:
 
         # 等待登录完成，确保 session 已写入
         time.sleep(3)
+        # 登录后校验是否真正进入控制台
+        if not self._is_logged_in():
+            msg = "登录后仍未进入控制台, 请检查账号密码或 TOTP 配置\n签到失败"
+            print(msg)
+            Notice.serverJ(self.push_key, "Akile签到", msg)
+            return False
         return True
 
     def _get_ak_coins(self):
