@@ -98,6 +98,23 @@ python Akile-Checkin.py
 - **定时签到工作流**：已移除定时触发器，保留 `workflow_dispatch` 手动触发。如需手动在 GitHub Actions 中运行，可在 Actions 页面手动触发 `Akile Daily Check-in`。
 - **镜像构建工作流**：每次推送至 `main` 分支或创建 `v*` 标签时，会自动构建并推送 Docker 镜像到 GHCR。也可在 Actions 页面手动触发 `Build and Push Docker Image to GHCR`。
 
+## ⚠️ 重要提醒：平台可能强制改密
+
+Akile / AkileCloud 在遇到安全风险（例如撞库、数据库泄露事件）时，登录后可能弹出：
+
+- **「验证邮箱并修改密码」**
+- 需要填写邮箱验证码 + 新密码
+
+**这类二次校验脚本无法自动完成。** 若自动签到突然失败，日志里出现「强制修改密码」「登录被拦截」等提示，请按下面步骤处理：
+
+1. 打开官网 [https://akile.ai/login](https://akile.ai/login) **手动登录**
+2. 按弹窗要求完成邮箱验证码，并设置新密码
+3. 把本地 `config.ini` 里的 `password` 更新为新密码  
+   如果使用 GitHub Actions，还要同步更新 Secrets 中的 `AKILE_PASSWORD`
+4. 再重新运行脚本 / 手动触发工作流
+
+另外，登录后还可能出现 **Passkey 绑定提示**（可点「下次一定」跳过）或 **安全公告弹窗**。当前脚本会尽量自动关闭这些可跳过弹窗；但 **强制改密、验证器 TOTP、强制 Passkey 验证** 仍需你在官网手动处理。
+
 ## ⚙️ 配置说明
 
 编辑 `config.ini` 文件：
@@ -154,12 +171,23 @@ docker run -d --name akile-checkin \
 
 成功签到：
 ```
-签到成功, 获得10个AK币, 当前有100个AK币
+登录成功
+当前AK币: 100
+找到签到按钮，正在点击...
+签到成功, 获得10个AK币, 当前有110个AK币
 ```
 
 重复签到：
 ```
+登录成功
+当前AK币: 100
 今日已签到, 现在有100AK币
+```
+
+强制改密拦截（需手动处理）：
+```
+登录被拦截：平台要求强制修改密码。请先在官网手动完成邮箱验证码改密，并同步更新 config.ini 或 GitHub Secrets 中的 AKILE_PASSWORD。
+签到失败
 ```
 
 ## 📂 项目结构
