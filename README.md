@@ -1,14 +1,16 @@
-**⚠️当前项目已失效并不再维护更新，推荐使用 https://github.com/luoxiaoxin123/Akile-checkin 这个项目⚠️**
-
 **Akile.io 自动签到脚本**
 
 基于 Selenium 实现的自动签到工具
+
+> 本项目为 [nianzhibai/Akile-checkin](https://github.com/nianzhibai/Akile-checkin) 的活跃维护 fork，已同步上游 [luoxiaoxin123/Akile-checkin](https://github.com/luoxiaoxin123/Akile-checkin) 的安全拦截检测，并适配了 Akile 页面改版。
 
 ## ✨ 特性
 
 - 🤖 **全自动签到** - 自动登录并完成每日签到任务
 - 🔐 **TOTP 自动填入** - 支持二次验证自动填写
 - 🍪 **Session 持久化** - 复用本地 Chrome session，避免每次重复登录
+- 🛡️ **安全拦截检测** - 自动识别强制改密、强制 Passkey、密码错误等拦截并推送提醒
+- 🪟 **弹窗自动处理** - 自动关闭 Passkey 绑定提示（点「下次一定」）和公告弹窗
 - 🐳 **Docker 支持** - 开箱即用的容器化部署，默认每天 10:00 自动签到
 - ⏰ **随机时间差** - 默认 ±5 分钟随机延迟，降低被检测风险
 
@@ -113,7 +115,7 @@ Akile / AkileCloud 在遇到安全风险（例如撞库、数据库泄露事件�
    如果使用 GitHub Actions，还要同步更新 Secrets 中的 `AKILE_PASSWORD`
 4. 再重新运行脚本 / 手动触发工作流
 
-另外，登录后还可能出现 **Passkey 绑定提示**（可点「下次一定」跳过）或 **安全公告弹窗**。当前脚本会尽量自动关闭这些可跳过弹窗；但 **强制改密、验证器 TOTP、强制 Passkey 验证** 仍需你在官网手动处理。
+另外，登录后还可能出现 **Passkey 绑定提示**（可点「下次一定」跳过）或 **安全公告弹窗**。当前脚本会自动关闭这些可跳过弹窗；**验证器 TOTP** 已配置密钥时会自动填入；但 **强制改密、强制 Passkey 验证** 仍需你在官网手动处理。
 
 ## ⚙️ 配置说明
 
@@ -171,7 +173,8 @@ docker run -d --name akile-checkin \
 
 成功签到：
 ```
-登录成功
+检测登录状态，当前 URL: https://akile.ai/console/ak-coin-shop
+检测到已有登录 session，跳过登录
 当前AK币: 100
 找到签到按钮，正在点击...
 签到成功, 获得10个AK币, 当前有110个AK币
@@ -179,7 +182,7 @@ docker run -d --name akile-checkin \
 
 重复签到：
 ```
-登录成功
+检测到已有登录 session，跳过登录
 当前AK币: 100
 今日已签到, 现在有100AK币
 ```
